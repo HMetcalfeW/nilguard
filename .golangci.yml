@@ -1,0 +1,26 @@
+version: "2"
+linters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+# Optional: enable nilguard as a custom plugin (once built)
+# linters-settings:
+#   custom:
+#     nilguard:
+#       path: ./bin/nilguard.so
+#       description: Detects pointers used without any nil check in the same function
+# enable:
+#   - nilguard
