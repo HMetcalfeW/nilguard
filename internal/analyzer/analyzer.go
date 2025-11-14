@@ -37,6 +37,9 @@ var Analyzer = &analysis.Analyzer{
 func run(pass *analysis.Pass) (interface{}, error) {
 	ins := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
+	// Precompute an index of lines that have a nolint directive for nilguard.
+	noLintIndex := buildNoLintIndex(pass)
+
 	// We care about function declarations and function literals. Both are
 	// treated the same from the perspective of our rule: each function body
 	// is analyzed independently.
@@ -61,7 +64,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			body = fn.Body
 		}
 
-		checkFunc(pass, body)
+		checkFunc(pass, body, noLintIndex)
 	})
 
 	return nil, nil
@@ -79,7 +82,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 //
 // At the end of the traversal, any pointer that was used at least once but
 // never nil-checked will result in a single diagnostic at its first use.
-func checkFunc(pass *analysis.Pass, body *ast.BlockStmt) {
+func checkFunc(pass *analysis.Pass, body *ast.BlockStmt, noLintIndex map[*token.File]map[int]bool) {
 	// ptrs maps each pointer-typed identifier (by its *ast.Object) to its
 	// usage information within this function body.
 	ptrs := make(map[types.Object]*pointerUseInfo)
@@ -176,11 +179,20 @@ func checkFunc(pass *analysis.Pass, body *ast.BlockStmt) {
 	// Emit diagnostics for any pointer that was used but never nil-checked.
 	for obj, info := range ptrs {
 		if info.firstPos == 0 {
+			// Pointer never used; nothing to report.
 			continue
 		}
 		if info.hasCheck {
+			// A qualifying nil-check exists; our v1 policy is satisfied.
 			continue
 		}
+
+		// Respect per-line //nolint:nilguard directives.
+		if hasNoLintNilguard(pass.Fset, noLintIndex, info.firstPos) {
+			continue
+		}
+
+		// Report a single diagnostic per pointer at its first use position.
 		pass.Reportf(info.firstPos,
 			"pointer %q is used in this function but never nil-checked",
 			obj.Name())

@@ -22,5 +22,5 @@ func TestNilguard(t *testing.T) {
 
 	// We run the analyzer on both the "ok" and "bad" packages. analysistest
 	// will compare the analyzer's diagnostics with the // want annotations.
-	analysistest.Run(t, testdata, Analyzer, "ok", "bad")
+	analysistest.Run(t, testdata, Analyzer, "ok", "bad", "nolint")
 }
