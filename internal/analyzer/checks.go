@@ -4,6 +4,9 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strings"
+
+	"golang.org/x/tools/go/analysis"
 )
 
 // baseIdentOf strips away syntactic noise like parentheses and returns the
@@ -12,10 +15,12 @@ import (
 //
 // Examples:
 //
-//	baseIdentOf(p)        -> ident "p"
-//	baseIdentOf((*p).X)   -> nil (we only call this on the base expr)
-//	baseIdentOf((p))      -> ident "p"
-//	baseIdentOf(((*p)))   -> nil (underlying is a StarExpr, not an Ident)
+//	baseIdentOf(p)      -> ident "p"
+//	baseIdentOf((p))    -> ident "p"
+//	baseIdentOf((*p).X) -> nil (we only call this on the base expr)
+//
+// Note: This helper is intentionally conservative and only recognizes simple
+// identifiers as bases. More complex expressions are left to later versions.
 func baseIdentOf(expr ast.Expr) *ast.Ident {
 	for {
 		switch e := expr.(type) {
@@ -81,12 +86,14 @@ func binopPtrNil(info *types.Info, e ast.Expr, want token.Token) *ast.Ident {
 // from the current function according to our v1 policy.
 //
 // For v1, we consider the following as "early exits":
+//
 //   - return
 //   - panic(...)
 //   - branch statements (break / continue / goto)
 //
 // This is intentionally conservative and coarse: treating break/continue/goto
-// as exits simplifies the reasoning without affecting the core nil-check rule.
+// as exits simplifies the reasoning without affecting the core nil-check rule
+// in real-world code.
 func exitsEarly(b *ast.BlockStmt) bool {
 	if b == nil || len(b.List) == 0 {
 		return false
@@ -113,4 +120,140 @@ func exitsEarly(b *ast.BlockStmt) bool {
 	}
 
 	return false
+}
+
+// buildNoLintIndex constructs an index of lines that contain a nolint directive
+// mentioning "nilguard", grouped by file.
+//
+// The result maps each *token.File to a set of line numbers (1-based) for
+// which diagnostics from nilguard should be suppressed.
+//
+// We only consider comment texts that contain both "nolint" and "nilguard"
+// (case-insensitive), which supports common forms such as:
+//
+//	//nolint:nilguard
+//	// nolint:nilguard
+//	// nolint:foo,nilguard,bar
+//
+// but does not treat bare //nolint as sufficient to suppress nilguard.
+func buildNoLintIndex(pass *analysis.Pass) map[*token.File]map[int]bool {
+	index := make(map[*token.File]map[int]bool)
+
+	for _, f := range pass.Files {
+		if f == nil {
+			continue
+		}
+
+		tf := pass.Fset.File(f.Pos())
+		if tf == nil {
+			continue
+		}
+
+		// Lazily allocate the per-file map when we actually find a relevant comment.
+		var lines map[int]bool
+
+		for _, cg := range f.Comments {
+			if cg == nil {
+				continue
+			}
+			for _, c := range cg.List {
+				if c == nil {
+					continue
+				}
+				// Normalize the comment text for a simple substring check.
+				text := strings.ToLower(c.Text)
+
+				// Quick filter: require both "nolint" and "nilguard".
+				if !strings.Contains(text, "nolint") || !strings.Contains(text, "nilguard") {
+					continue
+				}
+
+				if lines == nil {
+					lines = make(map[int]bool)
+					index[tf] = lines
+				}
+
+				line := tf.Line(c.Slash)
+				if line > 0 {
+					lines[line] = true
+				}
+			}
+		}
+	}
+
+	return index
+}
+
+// buildFileIndex records the set of file paths in the current package.
+func buildFileIndex(pass *analysis.Pass) map[string]bool {
+	index := make(map[string]bool)
+	if pass == nil || pass.Fset == nil {
+		return index
+	}
+
+	for _, f := range pass.Files {
+		if f == nil {
+			continue
+		}
+		tf := pass.Fset.File(f.Pos())
+		if tf == nil {
+			continue
+		}
+		index[tf.Name()] = true
+	}
+
+	return index
+}
+
+// isFileInPackage reports whether pos belongs to a file that appears in the
+// current package's file set.
+func isFileInPackage(fset *token.FileSet, index map[string]bool, pos token.Pos) bool {
+	if fset == nil {
+		return false
+	}
+	tf := fset.File(pos)
+	if tf == nil {
+		return false
+	}
+	return index[tf.Name()]
+}
+
+// hasNoLintNilguard reports whether the source line corresponding to pos in
+// the given file set is marked as having a nolint directive for nilguard in
+// the provided index.
+//
+// The index is expected to be produced by buildNoLintIndex.
+func hasNoLintNilguard(fset *token.FileSet, index map[*token.File]map[int]bool, pos token.Pos) bool {
+	if fset == nil {
+		return false
+	}
+
+	tf := fset.File(pos)
+	if tf == nil {
+		return false
+	}
+
+	lines, ok := index[tf]
+	if !ok {
+		return false
+	}
+
+	line := tf.Line(pos)
+	if line <= 0 {
+		return false
+	}
+
+	return lines[line]
+}
+
+// isTestFile reports whether the file containing pos ends with _test.go.
+func isTestFile(fset *token.FileSet, pos token.Pos) bool {
+	if fset == nil {
+		return false
+	}
+	tf := fset.File(pos)
+	if tf == nil {
+		return false
+	}
+	return strings.HasSuffix(tf.Name(), "_test.go")
 }

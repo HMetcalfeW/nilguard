@@ -1,11 +1,11 @@
-MODULE := github.com/your-org/nilguard
+MODULE := github.com/HMetcalfe/nilguard
 
 BIN_DIR := bin
 CLI_BIN := $(BIN_DIR)/nilguard
 VET_BIN := $(BIN_DIR)/nilguard-vet
 PLUGIN  := $(BIN_DIR)/nilguard.so
 
-.PHONY: all build cli vettool plugin test lint tidy ci clean
+.PHONY: all build cli vettool plugin test lint tidy ci clean tools
 
 all: build
 
@@ -26,6 +26,10 @@ test:
 lint:
 	golangci-lint run
 	staticcheck ./...
+
+tools:
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install honnef.co/go/tools/cmd/staticcheck@latest
 
 tidy:
 	go mod tidy

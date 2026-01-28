@@ -31,11 +31,21 @@ var Analyzer = &analysis.Analyzer{
 	Run: run,
 }
 
+var excludeTests bool
+
+func init() {
+	Analyzer.Flags.BoolVar(&excludeTests, "exclude-tests", false, "exclude _test.go files from analysis")
+}
+
 // run is the main entrypoint invoked by the analysis framework. It retrieves
 // the precomputed inspector and applies our per-function analysis to each
 // function declaration and function literal in the package.
 func run(pass *analysis.Pass) (interface{}, error) {
 	ins := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+
+	// Precompute an index of lines that have a nolint directive for nilguard.
+	noLintIndex := buildNoLintIndex(pass)
+	fileIndex := buildFileIndex(pass)
 
 	// We care about function declarations and function literals. Both are
 	// treated the same from the perspective of our rule: each function body
@@ -46,6 +56,9 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	}
 
 	ins.Preorder(nodeFilter, func(n ast.Node) {
+		if excludeTests && isTestFile(pass.Fset, n.Pos()) {
+			return
+		}
 		var body *ast.BlockStmt
 
 		switch fn := n.(type) {
@@ -61,7 +74,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			body = fn.Body
 		}
 
-		checkFunc(pass, body)
+		checkFunc(pass, body, noLintIndex, fileIndex)
 	})
 
 	return nil, nil
@@ -79,7 +92,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 //
 // At the end of the traversal, any pointer that was used at least once but
 // never nil-checked will result in a single diagnostic at its first use.
-func checkFunc(pass *analysis.Pass, body *ast.BlockStmt) {
+func checkFunc(pass *analysis.Pass, body *ast.BlockStmt, noLintIndex map[*token.File]map[int]bool, fileIndex map[string]bool) {
 	// ptrs maps each pointer-typed identifier (by its *ast.Object) to its
 	// usage information within this function body.
 	ptrs := make(map[types.Object]*pointerUseInfo)
@@ -176,11 +189,25 @@ func checkFunc(pass *analysis.Pass, body *ast.BlockStmt) {
 	// Emit diagnostics for any pointer that was used but never nil-checked.
 	for obj, info := range ptrs {
 		if info.firstPos == 0 {
+			// Pointer never used; nothing to report.
 			continue
 		}
 		if info.hasCheck {
+			// A qualifying nil-check exists; our v1 policy is satisfied.
 			continue
 		}
+
+		// Skip diagnostics for files outside the current package's file set.
+		if !isFileInPackage(pass.Fset, fileIndex, info.firstPos) {
+			continue
+		}
+
+		// Respect per-line //nolint:nilguard directives.
+		if hasNoLintNilguard(pass.Fset, noLintIndex, info.firstPos) {
+			continue
+		}
+
+		// Report a single diagnostic per pointer at its first use position.
 		pass.Reportf(info.firstPos,
 			"pointer %q is used in this function but never nil-checked",
 			obj.Name())
