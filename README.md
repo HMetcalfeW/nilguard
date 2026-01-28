@@ -51,3 +51,12 @@ make test
 make lint
 make build
 ```
+
+## Cache flags
+
+nilguard defaults to using temporary cache directories to avoid permission
+issues in locked-down environments. You can override these via flags:
+
+```bash
+./bin/nilguard -cache-dir /tmp/nilguard/go-build -mod-cache-dir /tmp/nilguard/go-mod ./...
+```

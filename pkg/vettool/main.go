@@ -7,9 +7,12 @@ package main
 
 import (
 	"github.com/HMetcalfe/nilguard/internal/analyzer"
+	"github.com/HMetcalfe/nilguard/internal/runner"
 	"golang.org/x/tools/go/analysis/multichecker"
 )
 
 func main() {
+	runner.SetupEnvDefaults()
+	runner.RegisterEnvFlags()
 	multichecker.Main(analyzer.Analyzer)
 }
