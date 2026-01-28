@@ -35,3 +35,19 @@ linters-settings:
       description: "Flags pointer uses without a nil check"
       original-url: "https://github.com/HMetcalfe/nilguard"
 ```
+
+## Development
+
+Requires Go 1.25+. For local linting, install tools once:
+
+```bash
+make tools
+```
+
+Common tasks:
+
+```bash
+make test
+make lint
+make build
+```
