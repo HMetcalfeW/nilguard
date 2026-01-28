@@ -184,6 +184,40 @@ func buildNoLintIndex(pass *analysis.Pass) map[*token.File]map[int]bool {
 	return index
 }
 
+// buildFileIndex records the set of file paths in the current package.
+func buildFileIndex(pass *analysis.Pass) map[string]bool {
+	index := make(map[string]bool)
+	if pass == nil || pass.Fset == nil {
+		return index
+	}
+
+	for _, f := range pass.Files {
+		if f == nil {
+			continue
+		}
+		tf := pass.Fset.File(f.Pos())
+		if tf == nil {
+			continue
+		}
+		index[tf.Name()] = true
+	}
+
+	return index
+}
+
+// isFileInPackage reports whether pos belongs to a file that appears in the
+// current package's file set.
+func isFileInPackage(fset *token.FileSet, index map[string]bool, pos token.Pos) bool {
+	if fset == nil {
+		return false
+	}
+	tf := fset.File(pos)
+	if tf == nil {
+		return false
+	}
+	return index[tf.Name()]
+}
+
 // hasNoLintNilguard reports whether the source line corresponding to pos in
 // the given file set is marked as having a nolint directive for nilguard in
 // the provided index.
@@ -210,4 +244,16 @@ func hasNoLintNilguard(fset *token.FileSet, index map[*token.File]map[int]bool, 
 	}
 
 	return lines[line]
+}
+
+// isTestFile reports whether the file containing pos ends with _test.go.
+func isTestFile(fset *token.FileSet, pos token.Pos) bool {
+	if fset == nil {
+		return false
+	}
+	tf := fset.File(pos)
+	if tf == nil {
+		return false
+	}
+	return strings.HasSuffix(tf.Name(), "_test.go")
 }
