@@ -1,5 +1,4 @@
 // Command nilguard runs the analyzer as a singlechecker CLI.
-// Implementation wired after analyzer code lands.
 package main
 
 import (
