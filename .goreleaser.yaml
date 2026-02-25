@@ -37,6 +37,15 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+brews:
+  - repository:
+      owner: HMetcalfeW
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://github.com/HMetcalfe/nilguard"
+    description: "Go static analyzer that enforces nil-check policy for pointer uses"
+    license: "Apache-2.0"
+
 changelog:
   sort: asc
   filters:

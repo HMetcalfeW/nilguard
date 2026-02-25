@@ -72,8 +72,6 @@ func nestedLiteralGuarded(p *S) {
 	}()
 }
 
-// --- Phase 3: Compound condition patterns ---
-
 // compoundAndCheck demonstrates that nil-checks within compound AND
 // conditions are recognized:
 //
@@ -109,8 +107,6 @@ func compoundOrEarlyReturn(p, q *S) {
 	_ = q.X
 }
 
-// --- Phase 3: Type assertion patterns ---
-
 // I is an interface for type assertion tests.
 type I interface{ Foo() }
 
@@ -135,8 +131,6 @@ func typeSwitchCase(x I) {
 		v.M()
 	}
 }
-
-// --- Phase 4: Additional real-world patterns ---
 
 // pointerReceiver demonstrates that a method with a pointer receiver
 // can nil-check and use the receiver without diagnostic.

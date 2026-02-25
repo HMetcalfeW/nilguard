@@ -58,8 +58,6 @@ func methodCall(p *S) {
 	p.M() // want "pointer \"p\" is used in this function but never nil-checked"
 }
 
-// --- Phase 3/4: Additional bad patterns ---
-
 // pointerReceiverUnchecked demonstrates that a pointer receiver used
 // without a nil-check still produces a diagnostic.
 func (s *S) PointerReceiverUnchecked() int {
