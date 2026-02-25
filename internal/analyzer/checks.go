@@ -82,6 +82,36 @@ func binopPtrNil(info *types.Info, e ast.Expr, want token.Token) *ast.Ident {
 	return nil
 }
 
+// collectNilChecks extracts all pointer identifiers that are nil-checked
+// within a (possibly compound) boolean expression. It recognizes:
+//
+//   - Simple: p != nil, p == nil
+//   - Compound AND: p != nil && q != nil && ...
+//   - Compound OR:  p == nil || q == nil || ...
+//
+// Returns two slices: neqIdents for != nil checks, eqlIdents for == nil checks.
+// The caller decides how to use them (e.g. markChecked with or without
+// early-exit requirement).
+func collectNilChecks(info *types.Info, e ast.Expr) (neqIdents, eqlIdents []*ast.Ident) {
+	switch x := e.(type) {
+	case *ast.BinaryExpr:
+		if x.Op == token.LAND || x.Op == token.LOR {
+			lNeq, lEql := collectNilChecks(info, x.X)
+			rNeq, rEql := collectNilChecks(info, x.Y)
+			return append(lNeq, rNeq...), append(lEql, rEql...)
+		}
+		if id := binopPtrNil(info, e, token.NEQ); id != nil {
+			return []*ast.Ident{id}, nil
+		}
+		if id := binopPtrNil(info, e, token.EQL); id != nil {
+			return nil, []*ast.Ident{id}
+		}
+	case *ast.ParenExpr:
+		return collectNilChecks(info, x.X)
+	}
+	return nil, nil
+}
+
 // exitsEarly reports whether the given block ends with an unconditional exit
 // from the current function according to our v1 policy.
 //

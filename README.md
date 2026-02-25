@@ -81,6 +81,10 @@ nilguard flags pointer **uses** that lack a nil-check anywhere in the same funct
 
 - `if p != nil { ... }`
 - `if p == nil { return }` (or `panic`, `break`, `continue`, `goto`)
+- Compound conditions: `if p != nil && q != nil { ... }`
+- Guard-then-exit: `if p == nil || q == nil { return }`
+- Two-value type assertion: `v, ok := x.(*T)` (marks `v` as checked)
+- Type switch: `switch v := x.(type) { case *T: }` (marks `v` as checked per case)
 
 A single qualifying check anywhere in the function satisfies all uses of that pointer.
 
@@ -98,7 +102,7 @@ _ = p.X //nolint:nilguard
 - **No cross-function analysis** — constructors and factory functions are not treated specially
 - **No flow-sensitive dominance** — a nil-check anywhere in the function satisfies all uses
 - **Nested function literals** — analyzed independently; a check in the outer function does not satisfy uses in a closure
-- **matchLabels only** — only simple `p != nil` / `p == nil` conditions; compound expressions like `p != nil && p.X > 5` not yet recognized
+- **No `errors.As` tracking** — `errors.As(err, &target)` is not recognized as a nil guard for `target`
 - **golangci-lint plugin** — requires `-buildmode=plugin`, which only works on Linux
 
 ## Development

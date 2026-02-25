@@ -71,3 +71,102 @@ func nestedLiteralGuarded(p *S) {
 		_ = p.X
 	}()
 }
+
+// --- Phase 3: Compound condition patterns ---
+
+// compoundAndCheck demonstrates that nil-checks within compound AND
+// conditions are recognized:
+//
+//	if p != nil && p.X > 0 { ... }
+//
+// This MUST NOT produce a diagnostic.
+func compoundAndCheck(p *S) {
+	if p != nil && p.X > 0 {
+		_ = p.X
+	}
+}
+
+// compoundAndMultiple demonstrates that multiple pointers checked in a
+// single compound AND condition are all recognized.
+func compoundAndMultiple(p, q *S) {
+	if p != nil && q != nil {
+		_ = p.X
+		_ = q.X
+	}
+}
+
+// compoundOrEarlyReturn demonstrates that nil-checks within compound OR
+// conditions followed by an early exit are recognized:
+//
+//	if p == nil || q == nil { return }
+//
+// This MUST NOT produce a diagnostic.
+func compoundOrEarlyReturn(p, q *S) {
+	if p == nil || q == nil {
+		return
+	}
+	_ = p.X
+	_ = q.X
+}
+
+// --- Phase 3: Type assertion patterns ---
+
+// I is an interface for type assertion tests.
+type I interface{ Foo() }
+
+// Foo satisfies the I interface for *S.
+func (s *S) Foo() {}
+
+// typeAssertOk demonstrates that a two-value type assertion (v, ok := x.(*T))
+// marks v as nil-checked, since the ok value guards it.
+func typeAssertOk(x I) {
+	v, ok := x.(*S)
+	if ok {
+		_ = v.X
+	}
+}
+
+// typeSwitchCase demonstrates that a type switch (switch v := x.(type))
+// marks v as nil-checked within each case clause.
+func typeSwitchCase(x I) {
+	switch v := x.(type) {
+	case *S:
+		_ = v.X
+		v.M()
+	}
+}
+
+// --- Phase 4: Additional real-world patterns ---
+
+// pointerReceiver demonstrates that a method with a pointer receiver
+// can nil-check and use the receiver without diagnostic.
+func (s *S) PointerReceiverGuarded() int {
+	if s == nil {
+		return 0
+	}
+	return s.X
+}
+
+// multiReturn demonstrates that a pointer obtained from a multi-return
+// function is properly tracked. The nil-check satisfies the policy.
+func multiReturn() {
+	p, _ := getPointer()
+	if p != nil {
+		_ = p.X
+	}
+}
+
+func getPointer() (*S, error) { return nil, nil }
+
+// structFieldPointer demonstrates that pointers stored in struct fields
+// are tracked when accessed via a local variable.
+type Container struct {
+	Ptr *S
+}
+
+func structFieldGuarded(c Container) {
+	p := c.Ptr
+	if p != nil {
+		_ = p.X
+	}
+}
