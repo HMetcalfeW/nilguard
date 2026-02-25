@@ -19,7 +19,7 @@ go install github.com/HMetcalfe/nilguard/cmd/nilguard@latest
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew tap HMetcalfeW/tap
+brew tap hmetcalfew/tap
 brew install nilguard
 ```
 
