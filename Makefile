@@ -12,10 +12,10 @@ all: build
 build: cli vettool
 
 cli:
-	go build -o $(CLI_BIN) ./pkg/nilguard
+	go build -o $(CLI_BIN) ./cmd/nilguard
 
 vettool:
-	go build -o $(VET_BIN) ./pkg/vettool
+	go build -o $(VET_BIN) ./cmd/nilguard-vet
 
 plugin:
 	GOFLAGS=-buildmode=plugin go build -o $(PLUGIN) ./plugin
