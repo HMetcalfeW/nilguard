@@ -57,3 +57,39 @@ func multiPointers(p, q *S) {
 func methodCall(p *S) {
 	p.M() // want "pointer \"p\" is used in this function but never nil-checked"
 }
+
+// pointerReceiverUnchecked demonstrates that a pointer receiver used
+// without a nil-check still produces a diagnostic.
+func (s *S) PointerReceiverUnchecked() int {
+	return s.X // want "pointer \"s\" is used in this function but never nil-checked"
+}
+
+// multiReturnUnchecked demonstrates that a pointer from a multi-return
+// function that is used without a nil-check produces a diagnostic.
+func multiReturnUnchecked() {
+	p, _ := getPointer()
+	_ = p.X // want "pointer \"p\" is used in this function but never nil-checked"
+}
+
+func getPointer() (*S, error) { return nil, nil }
+
+// compoundOrNoExit demonstrates that `if p == nil || q == nil { ... }`
+// without an early exit does NOT count as a qualifying check.
+func compoundOrNoExit(p, q *S) {
+	if p == nil || q == nil {
+		_ = "handle it" // no early exit
+	}
+	_ = p.X // want "pointer \"p\" is used in this function but never nil-checked"
+	_ = q.X // want "pointer \"q\" is used in this function but never nil-checked"
+}
+
+// structFieldUnchecked demonstrates that a pointer extracted from a struct
+// field and used without a nil-check produces a diagnostic.
+type Container struct {
+	Ptr *S
+}
+
+func structFieldUnchecked(c Container) {
+	p := c.Ptr
+	_ = p.X // want "pointer \"p\" is used in this function but never nil-checked"
+}

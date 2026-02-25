@@ -10,7 +10,10 @@ permissions:
 
 jobs:
   test-build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -18,8 +21,6 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Test
-        env:
-          GOCACHE: ${{ runner.temp }}/go-build
         run: go test ./...
       - name: Build
         run: make build

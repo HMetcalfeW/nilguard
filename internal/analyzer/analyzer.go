@@ -146,6 +146,21 @@ func checkFunc(pass *analysis.Pass, body *ast.BlockStmt, noLintIndex map[*token.
 		info.hasCheck = true
 	}
 
+	// markCheckedByObj marks a pointer as checked using its types.Object directly.
+	// This is used for type assertion bindings where we have the object but not
+	// necessarily a pointer-typed identifier at the check site.
+	markCheckedByObj := func(obj types.Object) {
+		if obj == nil {
+			return
+		}
+		info, ok := ptrs[obj]
+		if !ok {
+			info = &pointerUseInfo{}
+			ptrs[obj] = info
+		}
+		info.hasCheck = true
+	}
+
 	// Walk the function body. We explicitly skip nested function literals,
 	// as those are analyzed separately as their own functions.
 	ast.Inspect(body, func(n ast.Node) bool {
@@ -170,15 +185,63 @@ func checkFunc(pass *analysis.Pass, body *ast.BlockStmt, noLintIndex map[*token.
 			}
 
 		case *ast.IfStmt:
-			// if p != nil { ... } is always treated as a qualifying check.
-			if id := binopPtrNil(pass.TypesInfo, x.Cond, token.NEQ); id != nil {
+			// Use collectNilChecks to handle both simple and compound conditions:
+			//   if p != nil { ... }
+			//   if p != nil && q != nil { ... }
+			//   if p == nil { return }
+			//   if p == nil || q == nil { return }
+			neqIdents, eqlIdents := collectNilChecks(pass.TypesInfo, x.Cond)
+			for _, id := range neqIdents {
 				markChecked(id)
 			}
-
-			// if p == nil { early-exit } is also treated as a qualifying check.
-			if id := binopPtrNil(pass.TypesInfo, x.Cond, token.EQL); id != nil {
-				if exitsEarly(x.Body) {
+			if exitsEarly(x.Body) {
+				for _, id := range eqlIdents {
 					markChecked(id)
+				}
+			}
+
+		case *ast.AssignStmt:
+			// Recognize ok-guarded type assertions:
+			//   v, ok := x.(*T)
+			// When ok is checked (via if ok / if !ok { return }), v is non-nil
+			// in the success path. We mark v as checked here since the ok
+			// variable acts as the nil guard.
+			if len(x.Lhs) == 2 && len(x.Rhs) == 1 {
+				if ta, ok := x.Rhs[0].(*ast.TypeAssertExpr); ok {
+					_ = ta // type assertion detected
+					if resultId, ok := x.Lhs[0].(*ast.Ident); ok {
+						obj := pass.TypesInfo.ObjectOf(resultId)
+						if obj != nil {
+							t := obj.Type()
+							if t != nil {
+								if _, isPtr := t.Underlying().(*types.Pointer); isPtr {
+									markCheckedByObj(obj)
+								}
+							}
+						}
+					}
+				}
+			}
+
+		case *ast.TypeSwitchStmt:
+			// Recognize type switch assertions:
+			//   switch v := x.(type) { case *T: v.Field }
+			// In Go's type system, v inside each case clause is a separate
+			// implicit types.Object (from pass.TypesInfo.Implicits) with the
+			// narrowed type. We mark each implicit object as checked.
+			if assign, ok := x.Assign.(*ast.AssignStmt); ok && len(assign.Lhs) == 1 {
+				if _, ok := assign.Lhs[0].(*ast.Ident); ok {
+					for _, stmt := range x.Body.List {
+						cc, ok := stmt.(*ast.CaseClause)
+						if !ok {
+							continue
+						}
+						implObj := pass.TypesInfo.Implicits[cc]
+						if implObj == nil {
+							continue
+						}
+						markCheckedByObj(implObj)
+					}
 				}
 			}
 		}
